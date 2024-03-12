@@ -1500,6 +1500,230 @@ killall v2ray*
 
 
 
+### 磁盘管理
+
+#### 1.新增虚拟内存(磁盘分区)
+
+```bash
+# 查看所有磁盘的信息,-f 显示分区文件系统
+lsblk -f
+
+# 查看磁盘各个分区的详细信息
+fdisk -l
+
+#-----------------------
+# 以第二块磁盘分区的方式增加虚拟内存,原生是不支持分区扩容的,第三方支持原磁盘虚拟内存扩容,但是不安全
+# 查看虚拟内存
+free -m
+
+# 1.对一块新的磁盘分区,进入交互模式
+fdisk /dev/sdb
+
+# 2. 输入 m 查看帮助,输入 n 新建分区
+n
+
+# 3.上一步结束后会提示创建分区类型,输入p 创建主分区
+# mbr分区表对于一块磁盘来说,支持3个主分区,1个扩展分区, 主分区命名格式为 sdb1,sdb2,sdb3,sd5~sdb16(扩展分区是概念上的,一个扩展分区支持12逻辑分区)
+p
+
+# 4.输入分区id 1,默认是1
+1
+
+# 5.输入起始扇区,默认2048,默认即可
+2048
+
+# 6.输入结束扇区的大小,这一步其实是规定这个分区大小,我们可以输入 +2G , +200M, 确定其大小
++2G
+
+# 7.输入 t,修改分区的id
+t
+
+# 8.确定分区的id是82,为交换分区
+82
+
+# 9. 输入w保存退出
+w
+
+# 10.查看修改后的信息 ,如果是进行磁盘分区不是swap,要使用自定义的分区,则需要对分区进行格式化,也就是指定其文件系统
+# mkfs.xfs /dev/sdb2  则是将 /dev/sdb2这个分区设置成xfs文件系统
+fdisk -l /dev/sdb1
+磁盘 /dev/sdb：21.5 GB, 21474836480 字节，41943040 个扇区
+Units = 扇区 of 1 * 512 = 512 bytes
+扇区大小(逻辑/物理)：512 字节 / 512 字节
+I/O 大小(最小/最佳)：512 字节 / 512 字节
+磁盘标签类型：dos
+磁盘标识符：0x8c9422c7
+
+   设备 Boot      Start         End      Blocks   Id  System
+/dev/sdb1            2048     4196351     2097152   82  Linux swap / Solaris
+
+# 11.持久挂载该交换分区,新增swap分区的UUID 可以通过 lsblk -f 查询
+cat >>/etc/fstab<<EOF
+UUID=25380378-4d98-4675-bfd6-06c7582346a8   swap    swap defaults       0 0
+EOF
+
+# 12.使配置生效,swap -s 查看有哪些 swap分区
+swapon
+```
+
+
+
+#### 2.新增虚拟内存(swap文件)
+
+```bash
+# 以文件的方式增加虚拟内存性能不如磁盘分区的方式提供虚拟内存, windows是以文件方式增加虚拟内存的,叫做分页文件
+
+#-----------以文件方式增加虚拟内存
+# 1.创建 1G 大小的文件
+root dd if=/dev/zero of=/swapfile bs=1M count=1024
+
+# 2.将文件的格式设置成虚拟内存 
+mkswap /swapfile
+
+# 3.配置虚拟内存文件
+cat >> etc/fstab << EOF
+/root/swapfile          swap                    swap    defaults        0 0
+EOF
+
+# 4.修改文件权限 并挂载虚拟内存文件
+chmod 600 /swapfile && swapon -a
+
+# 禁用swap分区文件
+swapoff /swapfile
+```
+
+
+
+#### 3. ISO
+
+```bash
+# 1.将光盘内容制作ISO文件
+cp /dev/sr0 /centos7.ios
+
+# 2.将文件夹制作成iso文件,将 /etc这个文件夹制作成ios文件 ,存放的位置是 /root/etc.iso
+# yum -y install genisoimage
+mkisofs -r -o /root/etc.iso /etc
+```
+
+
+
+#### 4. USB
+
+```bash
+# linux 不支持 ntfs文件系统, fat文件格式支持 linux 和 windows
+yum install -y dosfstools.x86_64
+mkfs.fat /dev/sdd1
+mount /dev/sdd1 /mnt/media
+
+# 卸载usb设备, sync 是确保 缓冲区的文件存到 usb移动存储设备中
+sync && umount /mnt/media
+```
+
+
+
+#### 5. 工具
+
+```bash
+# 查看分区对应的信息(容量,文件系统,挂载点...)
+lsblk -f
+df -h
+
+# 显示目录大小,默认显示当前文件夹
+# 查看/这个目录下每个文件夹总占用空间
+du -sh /*
+
+# 创建文件
+# if(input file)从哪个文件读数据, /dev/zero 生产随机数据
+# of(output file)输入数据到哪个文件
+# bs 一次读取多大的数据
+# count 生成多少次数据
+# 最终这个文件的大小是 1024M
+dd if=/dev/zero of=./a.iso  bs=1M count=1024
+
+# 对整个分区进行克隆(1:1完全复制)
+dd if=/dev/sda1 of=centos_bakcup.img
+```
+
+
+
+#### 6.LVM
+
+> LVM: Logical Volume Manager 可以允许对卷进行方便操作的抽象层，包括重新设定文件系统的大小，允许在多个物理设备间重新组织文件系统
+>
+> 通过交换PE来进行资料的转换，将原来LV内的PE转移到其他的设备中以降低LV的容量，或将其他设备中的PE加到LV中以加大容量 
+
+##### 分区创建逻辑卷
+
+```bash
+# 安装相关工具包
+yum install -y lvm2
+
+# 创建物理卷, /dev/sdb1 分区创建    /dev/sdc 整块磁盘创建物理卷
+pvcreate /dev/sdb1 /dev/sdc
+# 查看创建的物理卷
+pvs
+# 查看物理卷详情
+pvdisplay
+
+#-----------------
+
+# 将上一步创建的物理卷加入卷组, -s 可以指定PE大小,默认值是4MB ,vg_mysql是卷组的名字
+vgcreate vg_mysql /dev/sdc /dev/sdb1
+# 查看卷组,卷组大小是同一组物理卷大小的总和
+vgs
+# 查看卷组详情
+vgdisplay
+
+#-----------------
+
+# 创建逻辑卷,-n指定逻辑卷的名字 -L 指定逻辑卷的大小
+# 从 vg_mysql这个卷组中划分500M(-L 500M)的大小 创建一块名为 lv_data(-n lv_data)的逻辑卷
+lvcreate -n lv_data -L 500M vg_mysql
+
+# 查看逻辑卷
+lvs
+
+# 查看逻辑卷详情
+lvdisplay
+
+# 生成逻辑卷的软连接
+ll /dev/vg_mysql/lv_data
+# lrwxrwxrwx 1 root root 7 3月  13 03:08 /dev/vg_mysql/lv_data -> ../dm-2
+
+#-----------------
+
+# 给逻辑卷生成文件系统
+mkfs.xfs /dev/vg_mysql/lv_data
+
+# 将逻辑卷配置到文件中,永久生效,自动挂载
+# UUID ,文件系统类型可以通过  lsblk -f 或者 blkid 查看
+vim /etc/fstab
+#------------------------
+#.....
+UUID=S2c11b-OJDa-POQH-P9eu-H4PK-jFki-6pSM9P     /mysql/data     xfs     defaults        0 0
+#------------------------
+
+# 挂载设备
+mount -a
+
+
+#------------------------
+
+# 给逻辑卷扩容
+# df 查看逻辑卷位置
+lvextend -L +1G /dev/mapper/vg_mysql-lv_data
+
+# 同步文件系统, ext4文件系统同步命令是 resize2fs
+xfs_growfs /dev/vg_mysql/lv_data
+
+# 将创建的逻辑卷加入到已存在的卷组中  
+vgextend vg_mysql /dev/sdb2
+
+# 逻辑卷扩容
+# -r 自动识别逻辑卷的文件系统,不需要根据命令指定文件系统对应的命令进行扩容  
+lvextend -r -L +2G /dev/mapper/vg_mysql-lv_data
+```
+
 
 
 
@@ -1730,16 +1954,6 @@ killall v2ray*
 > `wq`  保存并退出
 >
 > `x` 保存并退出
-
-
-
-
-
-
-
-
-
-
 
 
 
