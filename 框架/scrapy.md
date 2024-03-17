@@ -527,6 +527,173 @@ def parse(self, response):
 
 
 
+### 分布式爬虫
+
+#### 1.下载第三方模块
+
+> 原生scrapy 调度器,管道类不支持多机器共享,所以不能实现分布式爬虫
+>
+> `pip install scrapy-redis`
+>
+> 注意python,scrapy,scrapy-redis 版本是否兼容
+>
+> scrapy==2.8.0
+>
+> scrapy-redis==0.7.3
+>
+> Twisted==22.10.0  # 这个下载scrapy时可能下载最新版,先卸载最新版本,然后安装此版本
+>
+> python==3.10.0 # 可以使用 pyenv 管理多个版本
+
+#### 2.创建普通scrapy工程
+
+```bash
+scrapy startproject demoProject
+cd demoProject
+scrapy genspider demo demo.com
+```
+
+#### 3.编写爬虫类
+
+```python
+import scrapy
+from scrapy_redis.spiders import RedisSpider
+from scrapyDemo6.items import ImageItem
+
+
+class DemoSpider(RedisSpider):
+    name = "demo"
+
+    # allowed_domains = ["demo.com"]
+    # 不需要起始url,将所有的请求放到redis的队列中
+    # start_urls = ["https://demo.com"]
+
+    # 定义redis队列的key  , 再其对应的队列中获取起始的 url
+    redis_key = "demo"
+
+    def parse(self, response):
+        list_img_detail_href = response.xpath('//div[@class="list"]//li/a/@href').extract()
+        list_img_detail_title = response.xpath('//div[@class="list"]//li//b/text()').extract()
+
+        for i in range(len(list_img_detail_href)):
+            href = "http://www.netbian.com" + list_img_detail_href[i]
+            item = ImageItem()
+            item["title"] = list_img_detail_title[i]
+            yield scrapy.Request(href, self.parse_detail, meta={"item": item})
+
+    def parse_detail(self, response):
+        item = response.meta["item"]
+        item["src"] = response.xpath('//div[@class="pic"]//img/@src').extract_first()
+
+        # 将解析后的数据提交给可以被多机器共享的管道类中
+        # 共享的管道类需要再settings.py文件中配置
+        # 数据最终会保存在配置的redis服务器中 他的key是 demo:items
+        # 取值
+        yield item
+ 
+```
+
+#### 4. 修改配置文件
+
+```python
+BOT_NAME = "demoProject"
+
+SPIDER_MODULES = ["demoProject.spiders"]
+NEWSPIDER_MODULE = "demoProject.spiders"
+
+REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
+TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
+FEED_EXPORT_ENCODING = "utf-8"
+
+# 关闭君子协议
+ROBOTSTXT_OBEY = False
+
+# 设置日志显示级别
+LOG_LEVEL = "ERROR"
+
+# 设置全局默认ua
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
+# 设置每个请求最大等待时长
+DOWNLOAD_TIMEOUT = 3
+
+# scrapy_redis 支持的第三方管道类,支持多机器数据共享
+ITEM_PIPELINES = {
+    "scrapy_redis.pipelines.RedisPipeline": 300,
+}
+
+# 1.启用调度将请求存储进redis
+SCHEDULER = "scrapy_redis.scheduler.Scheduler"
+
+# 2.确保所有spider通过redis共享相同的重复过滤。
+DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
+
+# 3.队列中的内容是否持久保存，为False的时候会在关闭redis的时候清空redis,类似断点续传的功能
+SCHEDULER_PERSIST = True
+  
+# 4.指定redis数据库的地址 (关闭redis.conf配置文件的只允许本机访问, 保护模式)
+#REDIS_URL = 'redis://192.168.10.150:6379'
+REDIS_HOST = "192.168.10.150"
+REDIS_PORT = 6379
+REDIS_ENCODING = 'utf-8'
+# REDIS_PARAMS = {"password":"123456"}
+```
+
+#### 5. 测试
+
+```bash
+# 运行爬虫
+scrapy crawl demo
+
+# 往redis队列中添加数据,只要队列有数据就能被爬虫程序提取
+lpush demo http://www.netbian.com/meinv/index_2.htm
+
+# 将item数据取出来,默认的yield items 会保存在redis服务器的列表中 他的key是 demo(爬虫名):items
+lrange demo:items 0 -1
+```
+
+
+
+
+
+### 增量式爬虫
+
+> 增量式爬虫
+>
+> - 概念：监测网站数据更新的情况，只会爬取网站最新更新出来的数据。
+>   -分析：
+>
+> - 指定一个起始url
+>
+> - 基于CrawlSpider获取其他页码链接
+>
+> - 基于Ruler 将其他页码链接进行请求
+>
+> - 从每一个页码对应的页面源码中解析出每一个电影详情页的URL
+>
+> - 核心：检测电影详情页的url之前有没有请求过
+>
+>   ​	将爬取过的电影详情页的url存储
+>
+>   ​	存储到redis的set数据结构
+>
+> - 对详情页的url发起请求，然后解析出电影的名称和简介
+>
+> - 进行持久化存储
+
+```python
+# ......
+def parse(self, response):
+    # sadd()==0 代表这个URL已经被爬取过
+    if self.conn.sadd("urls", response.url) == 0:
+        return
+# ......
+```
+
+
+
+
+
 ---
 
 
@@ -673,4 +840,3 @@ def parse(self, response):
 >   > if login_btn is not None:
 >   >     login_btn.click()
 >   > ```
->   >
