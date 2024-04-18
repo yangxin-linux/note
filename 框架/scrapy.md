@@ -1,4 +1,4 @@
-## scrapy备忘录
+## 1.scrapy备忘录
 
 ### scrapy的安装
 
@@ -29,13 +29,15 @@ sudo easy_install scrapy
 
 
 
-### 创建工程
+### 快速开始
+
+#### 创建工程
 
 `scrapy startproject projectName`
 
 ![image-20221126191550837](C:\Users\hxh\Desktop\note\img\image-20221126191550837.png)
 
-### 创建爬虫
+#### 创建爬虫
 
 ```cmd
 cd scrapyDemo
@@ -44,7 +46,7 @@ scrapy genspider example example.com
 
 ![image-20221126193828470](C:\Users\hxh\Desktop\note\img\image-20221126193828470.png)
 
-### 执行爬虫程序
+#### 执行爬虫程序
 
 + > 项目目录下 执行  ：
   >
@@ -66,7 +68,7 @@ scrapy genspider example example.com
   >     main()
   > ```
 
-### setting.py初始化配置
+#### setting.py初始化配置
 
 ```python
 # 关闭君子协议
@@ -87,7 +89,7 @@ FEED_EXPORT_ENCODING = 'gb18030'
 # FEED_EXPORT_ENCODING = 'utf-8'
 ```
 
-### 数据解析
+#### 数据解析
 
 ```python
 def parse(self, response):
@@ -102,7 +104,7 @@ def parse(self, response):
     print(list_title)
 ```
 
-### 持久化存储
+#### 持久化存储
 
 + ##### 基于终端指令的持久化存储
 
@@ -250,7 +252,7 @@ def parse(self, response):
   >
   > __Spider Middlewares__: 介于ScrapyEngine和Spider之间的中间件，主要工作是处理响应输入和请求输出
 
-### 请求传参
+#### 请求传参
 
 - 所需要的请求的数据不在同一个页面，所以将部分解析的数据封装完成后传递到下一次请求当中
 
@@ -279,7 +281,7 @@ def parse(self, response):
   >
   > 
 
-### 图片下载
+#### 图片下载
 
 > __注意：使用scrapy中的ImagesPIpeline批量下载图片时先安装如下库，否则相应的pipeline无法获取数据__
 >
@@ -426,7 +428,7 @@ def parse(self, response):
 > >
 > > 
 
-### 下载中间件
+#### 下载中间件
 
 > __downloadMiddlewa__: 位于引擎和下载器之间，可以批量拦截请求和响应，可以作用于ua伪装、ip代理、篡改响应对象、数据
 >
@@ -529,7 +531,7 @@ def parse(self, response):
 
 ### 分布式爬虫
 
-#### 1.下载第三方模块
+#### 1. 下载第三方模块
 
 > 原生scrapy 调度器,管道类不支持多机器共享,所以不能实现分布式爬虫
 >
@@ -545,7 +547,7 @@ def parse(self, response):
 >
 > python==3.10.0 # 可以使用 pyenv 管理多个版本
 
-#### 2.创建普通scrapy工程
+#### 2. 创建普通scrapy工程
 
 ```bash
 scrapy startproject demoProject
@@ -553,7 +555,7 @@ cd demoProject
 scrapy genspider demo demo.com
 ```
 
-#### 3.编写爬虫类
+#### 3. 编写爬虫类
 
 ```python
 import scrapy
@@ -656,7 +658,7 @@ lrange demo:items 0 -1
 
 
 
-### 增量式爬虫
+#### 6. 增量式爬虫
 
 > 增量式爬虫
 >
@@ -698,9 +700,9 @@ def parse(self, response):
 
 
 
-### 备注
+## 2.tip
 
-#### selenium
+#### 1.selenium
 
 ##### 基本使用
 
@@ -762,13 +764,76 @@ def parse(self, response):
 ##### 无头模式
 
 > ```python
-> from selenium import webdriver
+> def get_browser(browser_path: str = "./chromedriver", header: bool = False, detection=False):
+>  """
 > 
-> firefox_options = webdriver.FirefoxOptions()
-> firefox_options.add_argument("--headless")
-> firefox_options.add_argument("--disable-gpu")
+>  :param browser_path: 浏览器驱动路径
+>  :param header: False 表示创建无头浏览器
+>  :param detection: False 表示规避检测
+>  :return: 浏览器对象
+>  """
+>  from selenium import webdriver
+>  from selenium.webdriver.chrome.service import Service
+>  from selenium.webdriver.chrome.options import Options  # 实现无头浏览器必须导入的类
 > 
-> webdriver.Firefox(executable_path="./geckodriver.exe", options=firefox_options)
+>  from selenium.webdriver.support.ui import WebDriverWait  # 设置全局等待时间
+>  from selenium.webdriver.support import expected_conditions as EC
+>  from selenium.webdriver.common.by import By  # xpath定位元素
+> 
+>  chrome_options = Options()
+> 
+>  # 添加代理
+>  chrome_options.add_argument(f"--proxy-server=http://127.0.0.1:1087")
+>  
+>  # 以debug模式启动本地浏览器,chrome 是浏览器可执行程序文件,定位到chrome的位置,进入相关目录执行
+>  # chrome --remote-debugging-port=9222
+>  # 这种模式下调试 使用无头模式是冲突的
+>  # 使用调试模式打开浏览器 避免后端检测selenium
+>  chrome_options.add_argument("--disable-extensions")  #禁用扩展
+>  chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222") #连接到调试模式下的浏览器
+> 
+>  if not header:
+>      # 创建无头浏览器需要设置的参数
+>      chrome_options.add_argument("--headless")
+>      chrome_options.add_argument("--disable-gpu")
+> 
+>  if not detection:
+>      # 规避浏览器对selenium的检测 (去掉左上角显示的被自动化软件操作的提示)
+>      chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+> 
+>  # 创建全局浏览器对象
+>  service = Service(browser_path)
+>  browser = webdriver.Chrome(service=service, options=chrome_options)
+> 
+>  # 设置全局等待时长为5s
+>  wait = WebDriverWait(browser, 5)
+> 
+>  """
+>  # 示例代码
+>  browser.get("https://www.baidu.com")
+>  try:
+>      # 浏览器等待,直到XPATH匹配到这个元素才执行下面的动作
+>      # 因为设置了全局等待时长,如果超过5s还没有出现XPATH匹配的元素,则报错
+>      wait.until(EC.presence_of_element_located((By.ID, "su")))
+>      wait.until(EC.presence_of_element_located((By.ID, "kw")))
+> 
+>      search_btn = browser.find_element(By.ID, "su")
+>      search_input = browser.find_element(By.ID, "kw")
+>      search_input.send_keys("海贼王")
+>      # 模拟点击按钮
+>      search_btn.click()
+>      time.sleep(3)
+> 
+>      # selenium 执行JS代码,X方向不动,Y方向向下滚动到低
+>      browser.execute_script("window.scrollTo(0,document.body.scrollHeight)")
+> 
+>      time.sleep(3)
+>      print(browser.page_source)
+> 
+>  except Exception as e:
+>      print(e)
+>  """
+>  return browser, wait
 > ```
 
 
@@ -840,3 +905,305 @@ def parse(self, response):
 >   > if login_btn is not None:
 >   >     login_btn.click()
 >   > ```
+
+
+
+#### 2.虚拟环境
+
+```bash
+pip install virtualenv
+
+# 在当前目录创建虚拟环境
+virtualenv demo
+
+# 激活虚拟环境
+# linux mac
+cd demo/bin
+source activate
+# win
+cd demo/Scripts
+activate.bat
+
+# 退出虚拟环境
+# linux mac
+deactivate
+# win
+deactivate.bat
+```
+
+
+
+#### 3.pyenv
+
+```bash
+# 查看所有的远程的python版本
+pyenv install --list 
+
+# 查看所有本地的安装的python版本
+pyenv versions
+
+# 安装指定版本python
+pyenv install 3.10.0
+# 卸载制定版本
+pyenv uninstall 3.10.0
+
+# 设置全局python的版本
+pyenv global 3.10.0
+
+# 查看当前版本
+python -V
+```
+
+
+
+#### 4.settings.py解释
+
+```python
+USER_AGENT = "全局UA设置"
+
+ROBOTSTXT_OBEY = False
+
+# 注释的时候默认不开启cookie
+# 设置为False的时候scrapy默认使用了settings里面的cookie
+# 设置为True的时候scrapy就会把settings的cookie关掉，使用自定义cookie 中间件中自定义cookie
+# COOKIES_ENABLED = False
+
+# 设置请求并发数量,默认16
+# CONCURRENT_REQUESTS = 32
+
+# 下载延迟
+# DOWNLOAD_DELAY = 3
+
+# 设置日志显示级别
+# LOG_LEVEL = "INFO"
+
+# 下载中间件
+# "项目名.middlewares.类名":优先级,   数字越小优先级越高 ,取值范围 1-1000
+# DOWNLOADER_MIDDLEWARES = {
+#    "scrapyDemo5.middlewares.Scrapydemo5DownloaderMiddleware": 543,
+# }
+
+# redis配置
+# 4.指定redis数据库的地址
+# REDIS_URL = 'redis://192.168.10.150:6379'
+
+# REDIS_HOST = "192.168.10.150"
+# REDIS_PORT = 6379
+# REDIS_ENCODING = 'utf-8'
+# REDIS_PARAMS = {"password":"123456"}
+
+# mysql配置
+# MYSQL_INFO = {
+#     "HOST": "192.168.10.150",
+#     "USERNAME": "root",
+#     "PWD": "root",
+#     "DB": "python_sdpier",
+#     "CHARSET": "utf-8"
+# }
+
+# 图片下载配置
+ITEM_PIPELINES = {
+   "scrapyDemo3.pipelines.ImgPipeline": 300,
+}
+# 使用ImagePipeline时设置图片的保存目录
+IMAGES_STORE = './imgs'
+
+```
+
+
+
+#### 5.数据异步入库
+
+```python
+import time
+
+from MySQLdb import connect
+from twisted.enterprise import adbapi
+
+
+# 同步保存数据,拖慢爬虫整体的速度
+class Scrapydemo2Pipeline:
+    def __init__(self):
+        self.conn = connect(host="192.168.10.150", user="root", password="root", db="python_spider",
+                            port=3306,
+                            charset="utf8", use_unicode=True)
+        self.cursor = self.conn.cursor()
+
+    def process_item(self, item, spider):
+        sql = """
+            insert into music_info(title,author,real_href) values (%s,%s,%s)
+            """
+        self.cursor.execute(sql, (f"测试标题{time.time()}", "测试数据", "测试数据"))
+        self.conn.commit()
+        return item
+
+
+# 异步保存数据
+class TwistedSaveDate:
+    # 方法名固定,scrapy会自动将settings.py的配置属性注入到方法的settings变量中
+    @classmethod
+    def from_settings(cls, settings):
+        # from MySQLdb.cursors import DictCursor
+        dbParam = dict(
+            host=settings["MYSQL_HOST"],
+            db=settings["MYSQL_DB"],
+            user=settings["MYSQL_USER"],
+            passwd=settings["MYSQL_PWD"],
+            port=settings["MYSQL_PORT"],
+            charset="utf8",
+            # cursorClass=DictCursor,
+            use_unicode=True
+        )
+
+        pool = adbapi.ConnectionPool("MySQLdb", **dbParam)
+        return cls(pool)
+
+    def __init__(self, pool):
+        self.pool = pool
+
+    def process_item(self, item, spider):
+        # 异步存入数据
+        result = self.pool.runInteraction(self.insert_data, item)
+        # 异步插入数据出错执行的回调方法
+        result.addErrback(self.handle_error, item, spider)
+        pass
+
+    # cursor 会自动注入
+    def insert_data(self, cursor, item):
+        sql = """insert into music_info(title,author,real_href) values (%s,%s,%s)"""
+        cursor.execute(sql, (f"测试标题{time.time()}", "测试数据", "测试数据"))
+        pass
+
+    def handle_error(self, failure, item, spider):
+        print(failure)
+```
+
+
+
+## 3.抓包
+
+### 3.1 基于fiddler抓包
+
+#### 3.1.1 配置fiddler主机
+
+- 选项设置 tools -> options
+
+- 配置抓取https协议包,安装根证书
+
+![image-20240418095727147](assets/image-20240418095727147.png)
+
+- 配置fiddler作为代理服务器的端口
+
+![image-20240418095828277](assets/image-20240418095828277.png)
+
+- 配置fiddler作为网关服务,方便抓取局域网内其他主机
+
+  ![image-20240418100055028](assets/image-20240418100055028.png)
+
+#### 3.1.2 配置手机代理
+
+- 手机下载 fiddler证书
+- ![image-20240418100738390](assets/image-20240418100738390.png)
+- 手机安装fiddler证书
+
+![image-20240418100924300](assets/image-20240418100924300.png)
+
+- 手机配置fiddler代理服务器信息
+
+![image-20240418100448235](assets/image-20240418100448235.png)
+
+#### 3.1.3 注意事项
+
+- 这种配置方式完成后,也只能抓取手机浏览器访问网站的数据包,因为我们安装的这个证书是用户证书,而不是系统证书,一些app使用的是系统证书,所以使用这种方式抓app的数据包有可能造成app崩溃或者断网
+
+![image-20240418101528935](assets/image-20240418101528935.png)
+
+
+
+- 对包进行app安装包进行逆向解析分析
+
+![image-20240418101811482](assets/image-20240418101811482.png)
+
+![image-20240418101825363](assets/image-20240418101825363.png)
+
+![image-20240418101842214](assets/image-20240418101842214.png)
+
+![image-20240418102012560](assets/image-20240418102012560.png)
+
+- 查看逆向的安装包证书信息
+
+  ![image-20240418102121885](assets/image-20240418102121885.png)
+
+![image-20240418102221343](assets/image-20240418102221343.png)
+
+![image-20240418102514234](assets/image-20240418102514234.png)
+
+![image-20240418102558597](assets/image-20240418102558597.png)
+
+![image-20240418102651425](assets/image-20240418102651425.png)
+
+- 如果在android低版本可以对证书配置信息修改,那就可以直接抓包,如果是Android是高版本不能修改app证书信息,那就会导致抓app包失败
+
+### 3.2 基于lsposed抓包
+
+> 为了抓取app的数据包,需要安装lsposed框架,通过模拟器演示
+>
+> 假设已经安装完成了 Magisk 和 Lsposed框架,详细的安装教程已经放到资源文件夹
+
+#### 3.2.1 在Magisk 中刷入MagiskTrustUserCerts.zip
+
+> 成功刷入模块后必须重启模拟器
+
+![image-20240418104238000](assets/image-20240418104238000.png)
+
+#### 3.2.2 安装 JustTrustMe.apk 
+
+> 用来绕过 SSL Pinning，并在 LSPosed 中启用，模块作用域指定为 FGO
+
+![image-20240418104521633](assets/image-20240418104521633.png)
+
+
+
+#### 3.2.3 Reqable抓包工具安装
+
+> 完成上述步骤后,模拟器和主机同时安装 Reqable
+
+- Reqable 安装根证书到本地主机
+
+![image-20240418105029411](assets/image-20240418105029411.png)
+
+- Reqable安装根证书到模拟器中
+
+  ![image-20240418105225414](assets/image-20240418105225414.png)
+
+- 主机端安装根证书后导出根证书,注意证书到处的证书格式
+
+![image-20240418105410923](assets/image-20240418105410923.png)
+
+- 模拟器完成根证书安装后,打开将手机端Reqable ,将的根证书替换成 主机生成的根证书
+
+![image-20240418105517281](assets/image-20240418105517281.png)
+
+- 模拟器配置 Reqable信息,方便主机端Reqable抓取模拟器的包
+
+![image-20240418105732692](assets/image-20240418105732692.png)
+
+![image-20240418105839045](assets/image-20240418105839045.png)
+
+
+
+#### 3.2.4 测试
+
+- 勾选只抓取特定的app
+
+![image-20240418110017791](assets/image-20240418110017791.png)
+
+![image-20240418110105381](assets/image-20240418110105381.png)
+
+![image-20240418110115510](assets/image-20240418110115510.png)
+
+![image-20240418110150894](assets/image-20240418110150894.png)
+
+- 电脑端查看抓取数据包状态
+
+![image-20240418110336619](assets/image-20240418110336619.png)
