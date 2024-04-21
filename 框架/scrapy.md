@@ -1,4 +1,4 @@
-## 1.scrapy备忘录
+## 1.scrapy
 
 ### scrapy的安装
 
@@ -529,136 +529,7 @@ def parse(self, response):
 
 
 
-### 分布式爬虫
-
-#### 1. 下载第三方模块
-
-> 原生scrapy 调度器,管道类不支持多机器共享,所以不能实现分布式爬虫
->
-> `pip install scrapy-redis`
->
-> 注意python,scrapy,scrapy-redis 版本是否兼容
->
-> scrapy==2.8.0
->
-> scrapy-redis==0.7.3
->
-> Twisted==22.10.0  # 这个下载scrapy时可能下载最新版,先卸载最新版本,然后安装此版本
->
-> python==3.10.0 # 可以使用 pyenv 管理多个版本
-
-#### 2. 创建普通scrapy工程
-
-```bash
-scrapy startproject demoProject
-cd demoProject
-scrapy genspider demo demo.com
-```
-
-#### 3. 编写爬虫类
-
-```python
-import scrapy
-from scrapy_redis.spiders import RedisSpider
-from scrapyDemo6.items import ImageItem
-
-
-class DemoSpider(RedisSpider):
-    name = "demo"
-
-    # allowed_domains = ["demo.com"]
-    # 不需要起始url,将所有的请求放到redis的队列中
-    # start_urls = ["https://demo.com"]
-
-    # 定义redis队列的key  , 再其对应的队列中获取起始的 url
-    redis_key = "demo"
-
-    def parse(self, response):
-        list_img_detail_href = response.xpath('//div[@class="list"]//li/a/@href').extract()
-        list_img_detail_title = response.xpath('//div[@class="list"]//li//b/text()').extract()
-
-        for i in range(len(list_img_detail_href)):
-            href = "http://www.netbian.com" + list_img_detail_href[i]
-            item = ImageItem()
-            item["title"] = list_img_detail_title[i]
-            yield scrapy.Request(href, self.parse_detail, meta={"item": item})
-
-    def parse_detail(self, response):
-        item = response.meta["item"]
-        item["src"] = response.xpath('//div[@class="pic"]//img/@src').extract_first()
-
-        # 将解析后的数据提交给可以被多机器共享的管道类中
-        # 共享的管道类需要再settings.py文件中配置
-        # 数据最终会保存在配置的redis服务器中 他的key是 demo:items
-        # 取值
-        yield item
- 
-```
-
-#### 4. 修改配置文件
-
-```python
-BOT_NAME = "demoProject"
-
-SPIDER_MODULES = ["demoProject.spiders"]
-NEWSPIDER_MODULE = "demoProject.spiders"
-
-REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
-TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
-FEED_EXPORT_ENCODING = "utf-8"
-
-# 关闭君子协议
-ROBOTSTXT_OBEY = False
-
-# 设置日志显示级别
-LOG_LEVEL = "ERROR"
-
-# 设置全局默认ua
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-
-# 设置每个请求最大等待时长
-DOWNLOAD_TIMEOUT = 3
-
-# scrapy_redis 支持的第三方管道类,支持多机器数据共享
-ITEM_PIPELINES = {
-    "scrapy_redis.pipelines.RedisPipeline": 300,
-}
-
-# 1.启用调度将请求存储进redis
-SCHEDULER = "scrapy_redis.scheduler.Scheduler"
-
-# 2.确保所有spider通过redis共享相同的重复过滤。
-DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
-
-# 3.队列中的内容是否持久保存，为False的时候会在关闭redis的时候清空redis,类似断点续传的功能
-SCHEDULER_PERSIST = True
-  
-# 4.指定redis数据库的地址 (关闭redis.conf配置文件的只允许本机访问, 保护模式)
-#REDIS_URL = 'redis://192.168.10.150:6379'
-REDIS_HOST = "192.168.10.150"
-REDIS_PORT = 6379
-REDIS_ENCODING = 'utf-8'
-# REDIS_PARAMS = {"password":"123456"}
-```
-
-#### 5. 测试
-
-```bash
-# 运行爬虫
-scrapy crawl demo
-
-# 往redis队列中添加数据,只要队列有数据就能被爬虫程序提取
-lpush demo http://www.netbian.com/meinv/index_2.htm
-
-# 将item数据取出来,默认的yield items 会保存在redis服务器的列表中 他的key是 demo(爬虫名):items
-lrange demo:items 0 -1
-```
-
-
-
-
-
-#### 6. 增量式爬虫
+#### 增量式爬虫
 
 > 增量式爬虫
 >
@@ -704,7 +575,7 @@ def parse(self, response):
 
 #### 1.selenium
 
-##### 基本使用
+##### 1.1 基本使用
 
 > - 模拟浏览器发送请求
 >
@@ -761,7 +632,7 @@ def parse(self, response):
 
 
 
-##### 无头模式
+##### 1.2 无头模式
 
 > ```python
 > def get_browser(browser_path: str = "./chromedriver", header: bool = False, detection=False):
@@ -838,7 +709,7 @@ def parse(self, response):
 
 
 
-##### 等待方式
+##### 1.3 等待方式
 
 > - 强制等待
 >
@@ -908,6 +779,24 @@ def parse(self, response):
 
 
 
+##### 1.4 爬虫暂停与重启机制
+
+```bash
+# 创建多级目录 jsobinfo/001,所有的爬虫文件信息存放到 jboinfo目录下,不同的爬虫在这个job目录下创建不同的文件夹区分
+# 如 1号爬虫 jobinfo/001  2号爬虫 jobinfo/002 ......
+# 在命令行运行下面这个指令  (不要在 ide 的终端执行,因为scrapy信号处理机制不同)
+scrapy crawl demo -s JODDIR=./jobinfo/001
+
+# 在终端按一次  ctrl+c  可以暂停爬虫,爬虫的相关信息 保存到了 ./jobinfo/001
+
+# 下次重新爬虫再次输入
+scrapy crawl demo -s JODDIR=./jobinfo/001
+```
+
+![Snipaste_2024-04-18_20-18-34](./assets/Snipaste_2024-04-18_20-18-34.png)
+
+
+
 #### 2.虚拟环境
 
 ```bash
@@ -963,10 +852,13 @@ USER_AGENT = "全局UA设置"
 
 ROBOTSTXT_OBEY = False
 
-# 注释的时候默认不开启cookie
-# 设置为False的时候scrapy默认使用了settings里面的cookie
-# 设置为True的时候scrapy就会把settings的cookie关掉，使用自定义cookie 中间件中自定义cookie
-# COOKIES_ENABLED = False
+# 只要取消注释,就相当于 COOKIES_ENABLED = True
+# cookies的值默认从 DEFAULT_REQUEST_HEADERS 的配置找
+# 禁用 Scrapy 的 cookies 处理。每个请求都不会携带或接收 cookies，视为独立无关的会话
+# 可以在单个 Request 对象中手动设置 cookies，适用于需要为特定请求定制 cookies 的场景
+COOKIES_ENABLED = False
+# 启用 cookies 后，Scrapy 将自动处理 cookies，可以在请求之间保持状态，如登录信息、会话标识等
+# COOKIES_ENABLED = True
 
 # 设置请求并发数量,默认16
 # CONCURRENT_REQUESTS = 32
@@ -1080,6 +972,149 @@ class TwistedSaveDate:
 
 
 
+#### 6.使用cookies
+
+```python
+import time
+import pickle
+import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options  # 实现无头浏览器必须导入的类
+
+from selenium.webdriver.support.ui import WebDriverWait  # 设置全局等待时间
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By  # xpath定位元素
+
+
+def get_browser(browser_path: str = "./chromedriver", header: bool = False, detection=False):
+    """
+
+    :param browser_path: 浏览器驱动路径
+    :param header: False 表示创建无头浏览器
+    :param detection: False 表示规避检测
+    :return: 浏览器对象
+    """
+
+    chrome_options = Options()
+    if not header:
+        # 创建无头浏览器需要设置的参数
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--disable-gpu")
+
+    if not detection:
+        # 规避浏览器对selenium的检测 (去掉左上角显示的被自动化软件操作的提示)
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+
+    # 创建全局浏览器对象
+    service = Service(browser_path)
+    browser = webdriver.Chrome(service=service, options=chrome_options)
+
+    # 设置全局等待时长为5s
+    wait = WebDriverWait(browser, 5)
+
+    """
+    # 示例代码
+    browser.get("https://www.baidu.com")
+    try:
+        # 浏览器等待,直到XPATH匹配到这个元素才执行下面的动作
+        # 因为设置了全局等待时长,如果超过5s还没有出现XPATH匹配的元素,则报错
+        wait.until(EC.presence_of_element_located((By.ID, "su")))
+        wait.until(EC.presence_of_element_located((By.ID, "kw")))
+
+        search_btn = browser.find_element(By.ID, "su")
+        search_input = browser.find_element(By.ID, "kw")
+        search_input.send_keys("海贼王")
+        # 模拟点击按钮
+        search_btn.click()
+        time.sleep(3)
+
+        # selenium 执行JS代码,X方向不动,Y方向向下滚动到低
+        browser.execute_script("window.scrollTo(0,document.body.scrollHeight)")
+
+        time.sleep(3)
+        print(browser.page_source)
+
+    except Exception as e:
+        print(e)
+    """
+    return browser, wait
+
+
+def get_cookies(browser):
+    browser.get("https://www.51zxw.net/login")
+    browser.find_element(By.ID, "loginStr").send_keys("xxxxxx")
+    browser.find_element(By.ID, "pwd").send_keys("xxxxxx")
+    browser.find_element(By.XPATH, '//button[@type="submit"]').click()
+    time.sleep(2)
+    cookies = browser.get_cookies()
+
+    # 将cookies 列表对象写入(pickle.dump()实现数据序列化)文件中
+    pickle.dump(cookies, open("./test.cookie", "wb"))
+
+
+def use_cookie():
+    cookies = pickle.load(open("./test.cookie", "rb"))
+
+    # 将cookies列表对象转成字典对象
+    cookies_dict = dict()
+    for cookie in cookies:
+        cookies_dict[cookie['name']] = cookie['value']
+
+    headers = {
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    }
+
+    # request使用cookies
+    resp = requests.get("https://www.51zxw.net/Login/UserCenter", headers=headers, cookies=cookies_dict)
+    print(resp.text)
+
+    # scrapy使用cookies, settings.py 设置 COOKIES_ENABLED = True
+    # scrapy.Request("https://www.51zxw.net/Login/UserCenter", cookies=cookies)
+
+
+def main():
+    browser1, wait1 = get_browser(browser_path="./chromedriver_V123-0-6312-22")
+    get_cookies(browser1)
+    browser1.quit()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+
+
+#### 7. 获取settings属性值
+
+```python
+class DemoSpider(RedisSpider):
+    name = "demo"
+    start_urls = ["https://demo.com"]
+    
+    # 覆盖 settings.py的属性值
+    custom_settings = {
+        "USER_AGENT": "xxxx",
+        "DOWNLOAD_TIMEOUT":3
+    }
+    
+    def parse(self,response):
+        # 获取settings.py的属性值
+        self.settings.get("BOT_NAME")
+```
+
+
+
+
+
+---
+
+
+
+
+
+
+
 ## 3.抓包
 
 ### 3.1 基于fiddler抓包
@@ -1148,7 +1183,7 @@ class TwistedSaveDate:
 
 > 为了抓取app的数据包,需要安装lsposed框架,通过模拟器演示
 >
-> 假设已经安装完成了 Magisk 和 Lsposed框架,详细的安装教程已经放到资源文件夹
+> 假设安卓模拟器已经安装完成了 Magisk 和 Lsposed框架
 
 #### 3.2.1 在Magisk 中刷入MagiskTrustUserCerts.zip
 
@@ -1207,3 +1242,265 @@ class TwistedSaveDate:
 - 电脑端查看抓取数据包状态
 
 ![image-20240418110336619](assets/image-20240418110336619.png)
+
+
+
+---
+
+
+
+## 4.scrapy-redis
+
+### 4.1 环境准备
+
+```bash
+# 创建 redis 数据库
+# # 源码下载 :  wget http://download.redis.io/releases/redis-5.0.4.tar.gz
+docker run -p 6379:6379 --name redis_5.0.4 -v /data/docker/redis/redis.conf:/etc/redis/redis.conf -v /data/docker/redis/data:/data -d redis:5.0.4-alpine3.9 redis-server /etc/redis/redis.conf --appendonly yes --requirepass "root"
+```
+
+
+
+### 4.2 分布式爬虫流程
+
+#### 4.2.1 创建虚拟环境
+
+```bash
+# 为了避免版本冲突,本次示例使用python版本:  python3.10.0
+# pip install virtualenv
+virtualenv ~/.virtualenvs/scrapy-redis # 创建虚拟环境
+
+# 激活虚拟环境
+# unix
+cd ~/.virtualenvs/scrapy-redis/bin
+source activate
+# win
+cd ~/.virtualenvs/scrapy-redis/Scripts
+activate.bat
+
+# 退出虚拟环境
+# unix
+deactivate
+# win
+deactivate.bat
+```
+
+
+
+#### 4.2.2 创建scrapy项目
+
+```bash
+# 在虚拟环境下安装项目需要的模块
+pip install scrapy==2.8.0
+pip install scrapy-redis==0.7.3
+pip install Twisted==22.10.0  # 这个下载scrapy时可能下载最新版,先卸载最新版本,然后安装此版本
+
+# 在虚拟环境下创建该项目
+scrapy startproject demo_scrapy_redis
+cd demo_scrapy_redis
+scrapy genspider demo demo.com
+```
+
+
+
+#### 4.2.3 修改配置文件
+
+settings.py
+
+```python
+SPIDER_MODULES = ["demo_scrapy_redis.spiders"]
+NEWSPIDER_MODULE = "demo_scrapy_redis.spiders"
+
+#CONCURRENT_REQUESTS = 32
+
+#DOWNLOAD_DELAY = 3
+#CONCURRENT_REQUESTS_PER_DOMAIN = 16
+#CONCURRENT_REQUESTS_PER_IP = 16
+
+
+#COOKIES_ENABLED = False
+
+
+#TELNETCONSOLE_ENABLED = False
+
+
+#DEFAULT_REQUEST_HEADERS = {
+#    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+#    "Accept-Language": "en",
+#}
+
+#SPIDER_MIDDLEWARES = {
+#    "demo_scrapy_redis.middlewares.DemoScrapyRedisSpiderMiddleware": 543,
+#}
+
+#DOWNLOADER_MIDDLEWARES = {
+#    "demo_scrapy_redis.middlewares.DemoScrapyRedisDownloaderMiddleware": 543,
+#}
+
+#EXTENSIONS = {
+#    "scrapy.extensions.telnet.TelnetConsole": None,
+#}
+
+#ITEM_PIPELINES = {
+#    "demo_scrapy_redis.pipelines.DemoScrapyRedisPipeline": 300,
+#}
+
+#AUTOTHROTTLE_ENABLED = True
+# The initial download delay
+#AUTOTHROTTLE_START_DELAY = 5
+# The maximum download delay to be set in case of high latencies
+#AUTOTHROTTLE_MAX_DELAY = 60
+# The average number of requests Scrapy should be sending in parallel to
+# each remote server
+#AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
+# Enable showing throttling stats for every response received:
+#AUTOTHROTTLE_DEBUG = False
+
+#HTTPCACHE_ENABLED = True
+#HTTPCACHE_EXPIRATION_SECS = 0
+#HTTPCACHE_DIR = "httpcache"
+#HTTPCACHE_IGNORE_HTTP_CODES = []
+#HTTPCACHE_STORAGE = "scrapy.extensions.httpcache.FilesystemCacheStorage"
+
+# Set settings whose default value is deprecated to a future-proof value
+REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
+TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
+FEED_EXPORT_ENCODING = "utf-8"
+
+# 关闭君子协议
+ROBOTSTXT_OBEY = False
+
+# 设置日志显示级别
+LOG_LEVEL = "ERROR"
+
+# 设置全局默认ua
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
+# 设置每个请求最大等待时长
+DOWNLOAD_TIMEOUT = 3
+
+# scrapy_redis 支持的第三方管道类,支持多机器数据共享
+ITEM_PIPELINES = {
+    "demo_scrapy_redis.pipelines.DemoScrapyRedisPipeline": 200,
+    "scrapy_redis.pipelines.RedisPipeline": 300,
+}
+
+# 1.启用调度将请求存储进redis
+SCHEDULER = "scrapy_redis.scheduler.Scheduler"
+
+# 2.确保所有spider通过redis共享相同的重复过滤。
+DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
+"""
+# 如果项目集成布隆过滤器,则修改以下选项 pip install scrapy-redis-bloomfilter
+DUPEFILTER_CLASS = "scrapy_redis_bloomfilter.dupefilter.RFPDupeFilter"
+SCHEDULER= "scrapy_redis_bloomfilter.scheduler.Scheduler"
+BLOOMFILTER_HASH_NUMBER = 6
+BLOOMFILTER_BIT=30
+"""
+
+# 3.队列中的内容是否持久保存，为False的时候会在关闭redis的时候清空redis,类似断点续传的功能
+SCHEDULER_PERSIST = True
+
+# 4.指定redis数据库的地址 (关闭redis.conf配置文件的只允许本机访问, 保护模式)
+# REDIS_URL = 'redis://192.168.10.254 :6379'
+REDIS_HOST = "192.168.10.254"
+REDIS_PORT = 6379
+REDIS_ENCODING = 'utf-8'
+REDIS_PARAMS = {"password": "root"}
+```
+
+
+
+#### 4.2.4 编写Spider
+
+```python
+import scrapy
+import re
+from scrapy_redis.spiders import RedisSpider
+from ..items import DemoScrapyRedisItem
+
+
+class DemoSpider(RedisSpider):
+    name = "demo"
+    base_url = "https://pic.netbian.com"
+
+    # redis数据库通过设置 lpush demo:start_url https://pic.netbian.com/4kmeinv/ 添加起始url
+    # lpush 添加start_url的操作多次,每次操作爬虫程序都会整体流程走一遍,因为每一次操作完成会自动删除 redis_key,但是数据和爬取的URL指纹都保存在了 demo:items(数据类型:list) 和 demo:dupefilter(数据类型:set)
+    # 所以多次添加能达到多次爬取数据的效果(因为有url指纹的存在,会自动去重)
+    redis_key = "demo:start_url"
+
+    def parse(self, response):
+        response.body.decode("gbk")
+        image_links = re.findall(r'<a href="(/tupian/.*?html)" target', response.text)
+        for image_link in image_links:
+            # 图片详情页地址
+            yield scrapy.Request(DemoSpider.base_url + image_link, callback=self.parse_detail)
+
+        # 下一页地址
+        if re.search(r"下一页", response.text):
+            next_url = response.xpath('//div[@class="page"]/a[last()]/@href').extract_first()
+            yield scrapy.Request(DemoSpider.
+
+    def parse_detail(self, response):
+        response.body.decode("gbk")
+        item = DemoScrapyRedisItem()  # 假设已经定义了 item所需要的属性
+        item["src"] = DemoSpider.base_url + response.xpath('//a[@id="img"]/img/@src').extract_first()
+        item["title"] = response.xpath('//a[@id="img"]/img/@title').extract_first()
+        yield item
+
+```
+
+
+
+#### 4.4.5 编写pipeline(不是必须)
+
+```python
+import socket
+
+
+class DemoScrapyRedisPipeline:
+    def open_spider(self, spider):
+        self.host_ip = socket.gethostbyname(socket.gethostname())
+
+    def process_item(self, item, spider):
+        print(f"当前主机ip:{self.host_ip} -> 爬取到的数据是:{item}")
+        return item # 如果编写自己的 pipeline 一定要return item 将其交给 redis保存
+
+```
+
+
+
+#### 4.4.6 部署
+
+```bash
+# 在项目的根目录下生成所需要的模块文件
+pip freeze > requirements.txt
+
+# 将代码复制到另一台主机上,然后在另一台主机上安装项目所需要的模块
+pip install -r requirements.txt  # 另一台主机上执行此命令
+
+# 两台主机同时运行爬虫,scrapy_redis会将所有的scrapy.Request(...)请求交给 redis的调度器(settings.py中已经配置)
+# SCHEDULER = "scrapy_redis.scheduler.Scheduler"
+
+# 两台主机会从调度器中获取请求的url, 因为所有请求是保存在redis中,所以共享请求队列
+# 因为配置了过滤器,所以不同的主机不会请求到同一个url
+
+# 因为redis保存了请求完成的的 url指纹信息(demo:dupefilter),所以也不会重复爬取同一个请求
+scrapy crawl demo
+
+# 给redis数据库添加起始url
+lpush demo:start_url https://pic.netbian.com/4kmeinv/index.html
+
+# -----------------
+# 执行一段时间后查看 redis 生成的数据
+# redis会将 yield item的数据保存在list中 列表的key是 demo:items
+# redis 将指纹保存中 set 中,集合的key是 demo:dupefilter
+# redis 将请求保存的 zset 中,有序集合的key是 demo:requests
+
+lrange demo:items 0 -1  # 查看所有保存的item
+llen demo:items # 查看 表表中元素的个数
+
+smembers demo:dupefilter # 查看集合中指纹的详细信息
+scard demo:dupefilter # 查看集合中指纹的个数
+```
+

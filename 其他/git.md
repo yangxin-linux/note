@@ -319,3 +319,61 @@ exit                         #退出控制台进程ls console
 
 ```
 
+
+
+### 常见的问题
+
+#### 1.ssh免密登录
+
+##### 1.1 生成秘钥对
+
+```bash
+# 进入ssh密钥对保存的目录
+cd ~/.ssh
+
+# 生成密钥对 id_rsa(私钥)   id_rsa_pub(公钥)
+# 期间按三次回车,生成密钥对
+# -f 指定生成密钥的文件名  不指定的话默认就是 id_rsa
+ssh-keygen -t rsa -f id_github
+
+# 将公钥上传到需要免密登录的服务器, 提示输入root用户的登录密码
+# -i 是指定密钥对保存的位置 root用户名 192.169.1.1 目标IP  端口默认22
+ssh-copy-id -i ./id_rsa.pub hxh@192.169.1.1  # 建议使用非 root 用户 防止暴力破解密码
+
+ssh-add -k ./id_github  # mac系统需要加上这一步
+# 免密登录服务器
+ssh hxh@192.168.0.1
+
+# 查看服务器保存的公钥
+cd ~/.ssh
+cat authorized_keys
+
+# SSH进行认证的过程中除了对用户目录有权限要求外，对服务器上的 .ssh 文件夹和 authorized_keys 文件同样也要限制，如果日志中提示这两个的问题，可以通过如下方式进行修改：
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+
+<<EOF
+另外用 Mac OSX Terminal ssh 命令连接服务器之后，如果一段时间不操作，就会退出登录并出现如下错误提示：
+Write failed: Broken pipe
+只能重新用 ssh 命令进行连接。
+解决方法
+方法一：$ ssh -o ServerAliveInterval=60 user@IP
+
+方法二：只需在服务器的 /etc/ssh/sshd_config 中添加如下的配置：
+
+添加或者修改ClientAliveInterval为“ClientAliveInterval 60”。这个参数的是意思是每1分钟，服务器向客户端发一个消息，用于保持连接。保存后记得重启ssh服务
+EOF
+# 移除免密登录,可以直接删除 authorized_keys(可保存多个服务器的公钥) 文件保存的指定服务器公钥的内容
+```
+
+##### 1.2 github免密登录
+
+将生成的公钥保存到github中 `cat ~/.ssh/id_github.pub`
+
+![image-20240418133840292](./assets/image-20240418133840292.png)
+
+
+
+测试ssh免密登录是否成功
+
+`ssh -T git@github.com`
